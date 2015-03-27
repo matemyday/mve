@@ -6,10 +6,13 @@
 #ifndef SFM_BUNDLER_INIT_PAIR_HEADER
 #define SFM_BUNDLER_INIT_PAIR_HEADER
 
+#include <vector>
+
 #include "sfm/ransac_homography.h"
 #include "sfm/ransac_fundamental.h"
 #include "sfm/fundamental.h"
 #include "sfm/bundler_common.h"
+#include "sfm/pose.h"
 #include "sfm/defines.h"
 
 SFM_NAMESPACE_BEGIN
@@ -49,15 +52,39 @@ public:
     {
         int view_1_id;
         int view_2_id;
+        CameraPose view_1_pose;
+        CameraPose view_2_pose;
     };
 
 public:
     explicit InitialPair (Options const& options);
-    void compute (ViewportList const& viewports,
-        PairwiseMatching const& matching, Result* result);
+    /** Initializes the module with viewport and track information. */
+    void initialize (ViewportList const& viewports, TrackList const& tracks);
+    /** Finds a suitable initial pair and reconstructs the pose. */
+    void compute_pair (Result* result);
+    /** Reconstructs the pose for a given intitial pair. */
+    void compute_pair (int view_1_id, int view_2_id, Result* result);
+
+private:
+    struct CandidatePair
+    {
+        int view_1_id;
+        int view_2_id;
+        Correspondences matches;
+        bool operator< (CandidatePair const& other) const;
+    };
+    typedef std::vector<CandidatePair> CandidatePairs;
+
+private:
+    float compute_homography_ratio (CandidatePair const& candidate);
+    bool compute_pose (CandidatePair const& candidate,
+        CameraPose* pose1, CameraPose* pose2);
+    void compute_candidate_pairs (CandidatePairs* candidates);
 
 private:
     Options opts;
+    ViewportList const* viewports;
+    TrackList const* tracks;
 };
 
 /* ------------------------ Implementation ------------------------ */
@@ -72,7 +99,22 @@ InitialPair::Options::Options (void)
 inline
 InitialPair::InitialPair (Options const& options)
     : opts(options)
+    , viewports(NULL)
+    , tracks(NULL)
 {
+}
+
+inline void
+InitialPair::initialize (ViewportList const& viewports, TrackList const& tracks)
+{
+    this->viewports = &viewports;
+    this->tracks = &tracks;
+}
+
+inline bool
+InitialPair::CandidatePair::operator< (CandidatePair const& other) const
+{
+    return this->matches.size() < other.matches.size();
 }
 
 SFM_BUNDLER_NAMESPACE_END
